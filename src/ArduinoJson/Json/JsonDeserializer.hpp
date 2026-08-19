@@ -273,7 +273,21 @@ class JsonDeserializer {
       TFilter memberFilter = filter[key.c_str()];
 
       if (memberFilter.allow()) {
+#if defined(ARDUINOJSON_SKIP_DEDUP) && ARDUINOJSON_SKIP_DEDUP
+        // Celebright patch: skip the per-key uniqueness lookup below. getMember()
+        // is a linear scan of the members already parsed, so calling it for every
+        // key makes deserializing an object O(n^2). A 3000-entry "bulbs" map
+        // (setBulbs, and saved-scene save/load) locked the device for ~27s and
+        // starved the MQTT keep-alive. The app never sends duplicate keys, so
+        // unconditionally appending (member == nullptr -> addMember) is safe and
+        // makes object parsing O(n). Paired with the string-pool patch in
+        // StringPool.hpp. Enabled via ARDUINOJSON_SKIP_DEDUP in the top-level
+        // CMakeLists.txt. Re-check both patches after any ArduinoJson bump.
+        decltype(object.getMember(adaptString(key.c_str()), resources_)) member =
+            nullptr;
+#else
         auto member = object.getMember(adaptString(key.c_str()), resources_);
+#endif
         if (!member) {
           // Save key in memory pool.
           auto savedKey = stringBuilder_.save();

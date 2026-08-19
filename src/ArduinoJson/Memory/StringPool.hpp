@@ -48,11 +48,23 @@ class StringPool {
   StringNode* add(TAdaptedString str, Allocator* allocator) {
     ARDUINOJSON_ASSERT(str.isNull() == false);
 
+#if defined(ARDUINOJSON_SKIP_DEDUP) && ARDUINOJSON_SKIP_DEDUP
+    // Celebright patch: skip string interning. get() is a linear scan of the
+    // pool, so saving many UNIQUE strings (e.g. 3000 distinct numeric bulb keys)
+    // is O(n^2) and, together with the object-key scan in JsonDeserializer.hpp,
+    // caused a ~27s lockup parsing a 3000-bulb map. Always allocating a fresh
+    // node keeps parsing O(n); the only cost is that identical strings are no
+    // longer shared (a little more PSRAM), which is fine here. Enabled via
+    // ARDUINOJSON_SKIP_DEDUP in the top-level CMakeLists.txt. Re-check after any
+    // ArduinoJson bump.
+    StringNode* node = nullptr;
+#else
     auto node = get(str);
     if (node) {
       node->references++;
       return node;
     }
+#endif
 
     size_t n = str.size();
 

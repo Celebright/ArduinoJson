@@ -28,7 +28,20 @@ class StringBuilder {
   StringNode* save() {
     ARDUINOJSON_ASSERT(node_ != nullptr);
     node_->data[size_] = 0;
+#if defined(ARDUINOJSON_SKIP_DEDUP) && ARDUINOJSON_SKIP_DEDUP
+    // Celebright patch: skip string interning. getString() is a linear scan of
+    // the pool, run for every parsed string, so many UNIQUE strings (e.g. 3000
+    // distinct numeric bulb keys) make deserialization O(n^2) -- the ~27s lockup.
+    // Forcing node == nullptr always allocates a fresh string, keeping parsing
+    // O(n); the only cost is that identical strings are no longer shared (a little
+    // more PSRAM). This is the hot path for deserialized keys/values (see also the
+    // StringPool::add and JsonDeserializer.hpp patches). Enabled via
+    // ARDUINOJSON_SKIP_DEDUP in the top-level CMakeLists.txt. Re-check after any
+    // ArduinoJson bump.
+    StringNode* node = nullptr;
+#else
     StringNode* node = resources_->getString(adaptString(node_->data, size_));
+#endif
     if (!node) {
       node = resources_->resizeString(node_, size_);
       ARDUINOJSON_ASSERT(node != nullptr);  // realloc to smaller can't fail
